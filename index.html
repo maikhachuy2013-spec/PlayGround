@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <title>Twister Hunter</title>
+  <style>
+    :root { --amber:#ffb43a; --cream:#fff7df; --ink:#101820; }
+    * { box-sizing:border-box; }
+    html,body { width:100%; height:100%; margin:0; overflow:hidden; background:#9db7c8; font-family:"Trebuchet MS",system-ui,sans-serif; }
+    canvas { display:block; width:100%; height:100%; }
+    .hud { position:fixed; inset:0; pointer-events:none; color:var(--cream); text-shadow:0 2px 3px #000b; }
+    .topbar { position:absolute; top:max(12px,env(safe-area-inset-top)); left:14px; right:14px; display:flex; justify-content:space-between; align-items:flex-start; }
+    .brand { letter-spacing:.18em; font-size:12px; font-weight:900; text-transform:uppercase; }
+    .brand b { display:block; color:var(--amber); font-size:20px; letter-spacing:.06em; }
+    .stats { display:flex; gap:8px; }
+    .stat { min-width:92px; padding:8px 10px 7px; background:#101820cf; border:1px solid #ffffff35; border-radius:4px; backdrop-filter:blur(5px); }
+    .stat label { display:block; opacity:.7; font-size:9px; text-transform:uppercase; letter-spacing:.12em; }
+    .stat strong { display:block; margin-top:2px; font-size:17px; }
+    .mission { position:absolute; left:14px; top:82px; width:250px; background:#101820c9; border-left:3px solid var(--amber); padding:10px 12px; border-radius:0 4px 4px 0; }
+    .mission label { color:var(--amber); font-size:9px; font-weight:900; letter-spacing:.15em; text-transform:uppercase; }
+    .mission p { margin:5px 0 0; font-size:12px; line-height:1.35; }
+    .bar { height:5px; margin-top:7px; background:#ffffff29; border-radius:4px; overflow:hidden; }
+    .bar i { display:block; height:100%; width:0%; background:var(--amber); transition:.2s; }
+    .radar { position:absolute; right:14px; bottom:max(14px,env(safe-area-inset-bottom)); width:125px; height:125px; border-radius:50%; border:1px solid #ffffff55; background:#1018209c; overflow:hidden; backdrop-filter:blur(4px); }
+    .radar canvas { width:100%; height:100%; }
+    .controls { position:absolute; inset:0; pointer-events:none; }
+    .mobile { display:none; position:absolute; pointer-events:auto; bottom:max(14px,env(safe-area-inset-bottom)); width:78px; height:78px; border-radius:50%; border:1px solid #ffffff55; background:#10182075; color:#fff; font-size:25px; backdrop-filter:blur(3px); }
+    .left { left:14px; }
+    .right { left:102px; }
+    .boost { display:none; position:absolute; right:14px; bottom:150px; width:84px; height:84px; border-radius:50%; pointer-events:auto; border:2px solid #ffcf75; background:#9e5d17aa; color:#fff6dc; font-size:11px; font-weight:900; text-transform:uppercase; }
+    .overlay { position:absolute; inset:0; display:grid; place-items:center; pointer-events:auto; background:linear-gradient(135deg,#10182050,#10182012); }
+    .overlay.hidden { display:none; }
+    .card { width:min(440px,calc(100% - 32px)); padding:28px; background:#101820ed; border:1px solid #ffffff25; border-top:4px solid var(--amber); border-radius:6px; text-align:center; box-shadow:0 18px 60px #0008; }
+    .eyebrow { color:var(--amber); font-weight:900; letter-spacing:.22em; font-size11px; }
+    h1 { margin:7px 0 8px; font-size:38px; line-height:.95; text-transform:uppercase; }
+    .card p { margin:11px auto 18px; max-width:330px; color:#dce4e6; font-size13px; line-height:1.5; }
+    button.start { pointer-events:auto; border:0; border-radius:3px; background:var(--amber); color:#1a1712; font-weight:900; letter-spacing:.12em; padding:13px 22px; text-transform:uppercase; cursor:pointer; }
+    .keys { margin-top:15px; color:#aebbc0; font-size:10px; }
+    @media (max-width:700px),(pointer:coarse) {
+      .mobile,.boost { display:block; }
+      .radar { width:108px; height:108px; bottom:max(14px,env(safe-area-inset-bottom)); }
+      .mission { top:72px; width:210px; }
+      .brand b { font-size17px; }
+      .stat { min-width:70px; padding:7px; }
+      .stats { gap:4px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div class="hud">
+    <div class="topbar">
+      <div class="brand">Vortex<b>TWISTER HUNTER</b></div>
+      <div class="stats">
+        <div class="stat"><label>Distance</label><strong id="score">0 mi</strong></div>
+        <div class="stat"><label>Data</label><strong id="data">0 pts</strong></div>
+        <div class="stat"><label>Tank</label><strong id="fuel">100%</strong></div>
+      </div>
+    </div>
+    <div class="mission"><label>Field objective</label><p id="missionText">Deploy probes near the circulation</p><div class="bar"><i id="progress"></i></div></div>
+    <div class="radar"><canvas id="radar"></canvas></div>
+  </div>
+  <div class="controls">
+    <button class="mobile left" id="left" aria-label="Turn left">◀</button>
+    <button class="mobile right" id="right" aria-label="Turn right">▶</button>
+    <button class="boost" id="boost">Nitro</button>
+  </div>
+  <div class="overlay" id="overlay">
+    <div class="card"><div class="eyebrow">TORNADO INTERCEPT UNIT</div><h1 id="title">CHASE THE<br>STORM</h1><p id="copy">Collect probe data inside the target rings, dodge hail and debris, and keep your fuel above zero.</p><button class="start" id="start">Start chase</button><div class="keys">WASD / ARROWS · HOLD SHIFT TO BOOST</div></div>
+  </div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const radar=document.getElementById('radar'),rctx=radar.getContext('2d');
+let W,H,DPR,started=false,ended=false,last=0,shake=0;
+const keys={};
+const state={x:0,y:0,angle:-Math.PI/2,speed:2.6,score:0,data:0,fuel:100,probes:0,stormWave:0};
+let probes=[],hail=[],debris=[],road={};
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*DPR;canvas.height=H*DPR;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);radar.width=radar.height=Math.floor(125*DPR);}
+addEventListener('resize',resize);resize();
+function worldToScreen(x,y){return {x:W/2+(x-state.x)*12,y:H/2+(y-state.y)*12}}
+function makeWorld(){for(let i=0;i<9;i++)probes.push({x:Math.cos(i*2.2)*16+(i%3)*5,y:Math.sin(i*2.2)*16+(i%2)*7,r:2.3,got:false});for(let i=0;i<26;i++)hail.push({x:(Math.random()-.5)*150,y:(Math.random()-.5)*150,r:3+Math.random()*5,spin:Math.random()*6});for(let i=0;i<35;i++)debris.push({x:(Math.random()-.5)*150,y:(Math.random()-.5)*150,r:1+Math.random()*2,spin:Math.random()*6});}
+makeWorld();
+function reset(){state.x=0;state.y=0;state.angle=-Math.PI/2;state.speed=2.6;state.score=0;state.data=0;state.fuel=100;state.probes=0;probes=[];hail=[];debris=[];makeWorld();ended=false;startOverlay(false);}
+function startOverlay(start){started=start;document.getElementById('overlay').classList.toggle('hidden',start);}
+document.getElementById('start').onclick=()=>{if(ended){reset();}startOverlay(true);last=performance.now();};
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function touch(id,key){const el=document.getElementById(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[key]=true;el.setPointerCapture(e.pointerId)});el.addEventListener('pointerup',()=>keys[key]=false);el.addEventListener('pointercancel',()=>keys[key]=false);}
+touch('left','arrowleft');touch('right','arrowright');touch('boost','shift');
+function update(dt){
+  let turn=(keys.arrowleft||keys.a?-1:0)+(keys.arrowright||keys.d?1:0);state.angle+=turn*dt*1.8;
+  let throttle=(keys.arrowup||keys.w||keys[' ']||true)?1:0;
+  let boosting=(keys.shift)&&state.fuel>0;
+  if(boosting){state.speed+=dt*1.8;state.fuel-=dt*5}else state.speed+=dt*.45;
+  state.speed=Math.max(2.2,Math.min(boosting?6.8:4.7,state.speed));
+  state.x+=Math.cos(state.angle)*state.speed*dt;state.y+=Math.sin(state.angle)*state.speed*dt;
+  state.fuel-=dt*.55;if(state.fuel<0)state.fuel=0;
+  state.score+=dt*state.speed*.9;
+  for(const p of probes){if(!p.got){let d=Math.hypot(p.x-state.x,p.y-state.y);if(d<3){p.got=true;state.probes++;state.data+=250;state.fuel=Math.min(100,state.fuel+12);}}}
+  for(const h of hail){let dx=state.x-h.x,dy=state.y-h.y,d=Math.hypot(dx,dy);if(d<3.4){state.fuel-=dt*18;state.speed=Math.max(2.2,state.speed-dt*.8);shake=10;}h.x+=Math.sin(performance.now()/900+h.spin)*dt*.7;h.y+=Math.cos(performance.now()/1100+h.spin)*dt*.5;}
+  for(const d of debris){let dx=d.x-state.x,dy=d.y-state.y,len=Math.hypot(dx,dy);if(len<2.2){state.fuel-=dt*12;shake=7;}}
+  if(state.probes>=5){document.getElementById('missionText').textContent='Collection complete — intercept the funnel';}
+  if(state.score>220&&state.probes>=5){finish(true)}
+  if(state.fuel<=0)finish(false);
+}
+function finish(win){if(ended)return;ended=true;started=false;document.getElementById('overlay').classList.remove('hidden');document.getElementById('title').innerHTML=win?'CHASE<br>COMPLETE':'STRANDED';document.getElementById('copy').textContent=win?`Excellent intercept. ${state.data} data points collected with ${Math.round(state.fuel)}% fuel remaining.`:'The tank ran dry before the intercept was completed.';document.getElementById('start').textContent='Run it back';}
+function drawBackground(){
+  ctx.fillStyle='#809ca4';ctx.fillRect(0,0,W,H);
+  let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#788e98');g.addColorStop(.55,'#9aaa9a');g.addColorStop(1,'#b0ad84');ctx.fillRect(0,0,W,H);
+  // storm cloud ceiling
+  ctx.fillStyle='rgba(31,43,48,.58)';ctx.beginPath();ctx.moveTo(0,0);for(let x=0;x<=W+80;x+=80){ctx.quadraticCurveTo(x+40,35+Math.sin(x*.01)*22,x+80,8)}ctx.lineTo(W,H*.43);ctx.lineTo(0,H*.43);ctx.fill();
+  ctx.fillStyle='rgba(55,66,67,.30)';for(let i=0;i<12;i++){let x=((i*173-state.x*3)% (W+300))-150,y=58+(i*47%170);ctx.beginPath();ctx.ellipse(x,y,90,28,i*.2,0,7);ctx.fill();}
+  // ground grid
+  ctx.save();ctx.translate(W/2-state.x*12,H/2-state.y*12);ctx.rotate(-state.angle+Math.PI/2);
+  ctx.strokeStyle='rgba(62,84,67,.18)';ctx.lineWidth=1;for(let x=-150;x<150;x+=12){ctx.beginPath();ctx.moveTo(x*12,-250*12);ctx.lineTo(x*12,250*12);ctx.stroke();}
+  ctx.strokeStyle='rgba(64,68,55,.32)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-W,0);ctx.lineTo(W,0);ctx.moveTo(0,-H*2);ctx.lineTo(0,H*2);ctx.stroke();ctx.restore();
+}
+function drawStorm(){let p=worldToScreen(18,8);let cx=p.x,cy=p.y;
+  let pulse=1+Math.sin(performance.now()/350)*.04;
+  let rg=ctx.createRadialGradient(cx,cy,5,cx,cy,150*pulse);rg.addColorStop(0,'rgba(42,39,38,.72)');rg.addColorStop(.3,'rgba(70,66,61,.38)');rg.addColorStop(1,'rgba(48,58,59,0)');ctx.fillStyle=rg;ctx.beginPath();ctx.arc(cx,cy,150*pulse,0,7);ctx.fill();
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(performance.now()/1800);ctx.fillStyle='#302f31';ctx.beginPath();ctx.ellipse(0,0,75,28,-.2,0,7);ctx.fill();ctx.restore();
+  // cone
+  ctx.save();ctx.translate(cx,cy);ctx.globalAlpha=.72;ctx.fillStyle='#d7d2c3';ctx.beginPath();ctx.moveTo(-38,-180);ctx.quadraticCurveTo(-18,-100,-75,115);ctx.quadraticCurveTo(0,95,75,115);ctx.quadraticCurveTo(18,-100,38,-180);ctx.fill();ctx.restore();}
+function drawRoad(){let base=worldToScreen(0,0);ctx.save();ctx.translate(base.x,base.y);ctx.rotate(-state.angle+Math.PI/2);ctx.fillStyle='#6d6c60';ctx.fillRect(-22,-H*2,44,H*4);ctx.strokeStyle='#ded5a1';ctx.setLineDash([18,18]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-H*2);ctx.lineTo(0,H*2);ctx.stroke();ctx.restore();}
+function drawObjects(){
+  for(const h of hail){let p=worldToScreen(h.x,h.y);ctx.fillStyle='rgba(225,238,238,.75)';ctx.beginPath();ctx.arc(p.x,p.y,h.r,0,7);ctx.fill();}
+  for(const d of debris){let p=worldToScreen(d.x,d.y);ctx.fillStyle='#413d34';ctx.save();ctx.translate(p.x,p.y);ctx.rotate(d.spin+performance.now()/900);ctx.fillRect(-d.r*2,-d.r,d.r*4,d.r*2);ctx.restore();}
+  for(const p0 of probes){if(p0.got)continue;let p=worldToScreen(p0.x,p0.y);ctx.strokeStyle='#ffb43a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,28+Math.sin(performance.now()/300+p0.x)*3,0,7);ctx.stroke();ctx.fillStyle='#ffb43a';ctx.beginPath();ctx.moveTo(p.x,p.y-8);ctx.lineTo(p.x+7,p.y+7);ctx.lineTo(p.x-7,p.y+7);ctx.closePath();ctx.fill();}
+}
+function drawVehicle(){ctx.save();ctx.translate(W/2,H/2);ctx.rotate(state.angle+Math.PI/2);ctx.fillStyle='#d85a32';ctx.fillRect(-13,-24,26,48);ctx.fillStyle='#18222a';ctx.fillRect(-10,-18,20,12);ctx.fillStyle='#f5d99a';ctx.fillRect(-11,15,7,5);ctx.fillRect(4,15,7,5);ctx.fillStyle='#111';ctx.fillRect(-16,-15,5,12);ctx.fillRect(11,-15,5,12);ctx.fillRect(-16,8,5,12);ctx.fillRect(11,8,5,12);ctx.restore();}
+function drawRadar(){rctx.setTransform(1,0,0,1,0,0);let rw=radar.width,rh=radar.height;rctx.clearRect(0,0,rw,rh);rctx.scale(DPR,DPR);let s=125/125;rctx.fillStyle='#10182033';rctx.fillRect(0,0,125,125);rctx.strokeStyle='#ffffff25';rctx.beginPath();rctx.arc(62.5,62.5,45,0,7);rctx.stroke();rctx.fillStyle='#ffb43a';for(const p of probes){if(p.got)continue;let x=62+(p.x-state.x)*2,y=62+(p.y-state.y)*2;if(Math.abs(x-62)<58&&Math.abs(y-62)<58){rctx.beginPath();rctx.arc(x,y,2.5,0,7);rctx.fill();}}rctx.fillStyle='#fff';rctx.beginPath();rctx.arc(62,62,3,0,7);rctx.fill();rctx.strokeStyle='#ffb43a';rctx.beginPath();rctx.moveTo(62,62);rctx.lineTo(62+Math.cos(state.angle)*20,62+Math.sin(state.angle)*20);rctx.stroke();}
+function render(){drawBackground();drawStorm();drawRoad();drawObjects();drawVehicle();drawRadar();if(shake>0){canvas.style.transform=`translate(${(Math.random-.5)*shake}px,${(Math.random-.5)*shake}px)`;shake*=.85}else canvas.style.transform='';
+ document.getElementById('score').textContent=Math.floor(state.score)+' mi';document.getElementById('data').textContent=state.data+' pts';document.getElementById('fuel').textContent=Math.max(0,Math.round(state.fuel))+'%';document.getElementById('progress').style.width=Math.min(100,state.probes/5*100)+'%';
+}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;if(started&&!ended)update(dt);render();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
